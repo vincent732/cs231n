@@ -214,8 +214,16 @@ class FullyConnectedNet(object):
         # pass of the second batch normalization layer, etc.
         self.bn_params = []
         if self.use_batchnorm:
-            self.bn_params = [{'mode': 'train'} for i in range(self.num_layers - 1)]
+            self.bn_params = {'bn_param' + str(i + 1): {'mode': 'train',
+                                                        'running_mean': np.zeros(dims[i + 1]),
+                                                        'running_var': np.zeros(dims[i + 1])}
+                              for i in xrange(len(dims) - 2)}
+            gammas = {'gamma' + str(i + 1):
+                      np.ones(dims[i + 1]) for i in range(len(dims) - 2)}
+            betas = {'beta' + str(i + 1): np.zeros(dims[i + 1])
+                     for i in range(len(dims) - 2)}
 
+            
         # Cast all parameters to the correct datatype
         for k, v in self.params.items():
             self.params[k] = v.astype(dtype)
@@ -235,8 +243,10 @@ class FullyConnectedNet(object):
         if self.use_dropout:
             self.dropout_param['mode'] = mode
         if self.use_batchnorm:
-            for bn_param in self.bn_params:
-                bn_param['mode'] = mode
+            :
+            for key, bn_param in self.bn_params.iteritems():
+                bn_param[mode] = mode
+
 
         scores = None
         ############################################################################
@@ -260,7 +270,7 @@ class FullyConnectedNet(object):
             # dropout on the input layer
             hdrop, cache_hdrop = dropout_forward(hidden['h0'], self.dropout_param)
             hidden['hdrop0'], hidden['cache_hdrop0'] = hdrop, cache_hdrop
-            
+        
         for i in range(L):
             idx = i + 1
             weight = self.params["W" + str(idx)]
@@ -270,13 +280,22 @@ class FullyConnectedNet(object):
             # h after dropout
             if self.use_dropout:
                 h = hidden['hdrop' + str(idx - 1)]
-                
+            
+            if self.use_batchnorm:
+                bn_param = self.bn_params['bn_param'+str(idx)]
+                gamma = self.params['gamma'+str(idx)]
+                beta = self.params['beta'+str(idx)]
+
             if idx == L:
                 h, cache_h = affine_forward(h, weight, bias)
                 hidden["h"+str(idx)], hidden["cache_h"+str(idx)]   = h, cache_h
             else:
-                h, cache_h = affine_relu_forward(h, weight, bias)
-                hidden["h"+str(idx)], hidden["cache_h"+str(idx)]   = h, cache_h
+                if self.user_batchnorm:
+                    h, cache_h = affine_bn_relu_forward(h, weight, bias, gamma, beta, bn_param)
+                    hidden["h"+str(idx)], hidden["cache_h"+str(idx)]   = h, cache_h
+                else:
+                    h, cache_h = affine_relu_forward(h, weight, bias)
+                    hidden["h"+str(idx)], hidden["cache_h"+str(idx)]   = h, cache_h
                 
                 #apply dropout
                 if self.use_dropout:
@@ -310,7 +329,7 @@ class FullyConnectedNet(object):
         data_loss, dscores = softmax_loss(scores, y)
         reg_loss = sum([0.5 * self.reg * np.sum(self.params['W'+str(i)] ** 2) for i in range(1, self.num_layers + 1)])
         loss = data_loss + reg_loss
-
+        # TODO
         # backward
         hidden['dh'+str(L)] = dscores
         for i in range(L)[::-1]:
@@ -337,3 +356,21 @@ class FullyConnectedNet(object):
         ############################################################################
 
         return loss, grads
+
+
+def affine_bn_relu_forward(x, weight, bias, gamma, beta, bn_params):
+    h, cache_h = affine_forward(x, weight, bias)
+    normal_h, normal_cache_h = batchnorm_forward(h, gamma, beta, bn_params)
+    normal_relu_h, normal_cache_relu_h = relu_forward(normal_h)
+    cache = (cache_h, normal_cache_h, normal_cache_relu_h)
+
+    return normal_relu_h, cache
+
+def affine_bn_relu_backward(dout, cache):
+    h_cache, hnorm_cache, relu_cache = cache
+
+    dhnormrelu = relu_backward(dout, relu_cache)
+    dhnorm, dgamma, dbeta = batchnorm_backward_alt(dhnormrelu, hnorm_cache)
+    dx, dw, db = affine_backward(dhnorm, h_cache)
+
+    return dx, dw, db, dgamma, dbeta
