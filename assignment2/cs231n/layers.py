@@ -171,7 +171,18 @@ def batchnorm_forward(x, gamma, beta, bn_param):
         # variance, storing your result in the running_mean and running_var   #
         # variables.                                                          #
         #######################################################################
-        pass
+        # step 1 - mini-natch mean shape = (D,)
+        mean = np.sum(x, axis = 0) / N
+        #  step 2 - mini-batch variance
+        var = np.sum((x - mean) ** 2, axis = 0) / N
+        # step 3 - normalize
+        inv_var =  1. / np.sqrt(var + eps)
+        xhat = (x - mean) * inv_var
+        # step 4 - scale and shift
+        out = gamma * xhat + beta
+        running_mean = momentum * running_mean + (1 - momentum) * mean
+        running_var = momentum * running_mean + (1 - momentum) * var
+        cache = (inv_var, xhat, gamma, beta, bn_param)
         #######################################################################
         #                           END OF YOUR CODE                          #
         #######################################################################
@@ -182,7 +193,13 @@ def batchnorm_forward(x, gamma, beta, bn_param):
         # then scale and shift the normalized data using gamma and beta.      #
         # Store the result in the out variable.                               #
         #######################################################################
-        pass
+        mean = running_mean
+        var = running_var
+        # normalize
+        x_hat = (x - mean) / np.sqrt(var + eps)
+        # scale and shift
+        out = gamma * x_hat + beta
+        cache = (mean, var, gamma, beta, bn_param)
         #######################################################################
         #                          END OF YOUR CODE                           #
         #######################################################################
@@ -218,7 +235,17 @@ def batchnorm_backward(dout, cache):
     # TODO: Implement the backward pass for batch normalization. Store the    #
     # results in the dx, dgamma, and dbeta variables.                         #
     ###########################################################################
-    pass
+    eps = bn_param.get('eps', 1e-5)
+    N, D = dout.shape
+    (inv_var, xhat, gamma, beta, bn_param) = cache
+    
+    # intermediate partial derivatives
+    dxhat = dout * gamma
+
+    # final partial derivatives
+    dx = (1. / N) * inv_var * (N*dxhat - np.sum(dxhat, axis=0)  - x_hat*np.sum(dxhat*x_hat, axis=0))
+    dbeta = np.sum(dout, axis=0)
+    dgamma = np.sum(x_hat*dout, axis=0)
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################

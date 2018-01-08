@@ -252,20 +252,38 @@ class FullyConnectedNet(object):
         # layer, etc.                                                              #
         ############################################################################
         N = X.shape[0]
-        hidden = {"h0":X.reshape(N, -1)}
         L = self.num_layers
+ 
+        # forward
+        hidden = {"h0":X.reshape(N, -1)}
+        if self.use_dropout:
+            # dropout on the input layer
+            hdrop, cache_hdrop = dropout_forward(hidden['h0'], self.dropout_param)
+            hidden['hdrop0'], hidden['cache_hdrop0'] = hdrop, cache_hdrop
+            
         for i in range(L):
             idx = i + 1
             weight = self.params["W" + str(idx)]
             bias = self.params['b' + str(idx)]
             h = hidden['h' + str(idx - 1)]
+            
+            # h after dropout
+            if self.use_dropout:
+                h = hidden['hdrop' + str(idx - 1)]
+                
             if idx == L:
-                hidden_layer, cache_hidden_layer = affine_forward(h, weight, bias)
-                scores = hidden_layer
+                h, cache_h = affine_forward(h, weight, bias)
+                hidden["h"+str(idx)], hidden["cache_h"+str(idx)]   = h, cache_h
             else:
-                hidden_layer, cache_hidden_layer = affine_relu_forward(h, weight, bias)
-            hidden["h"+str(idx)] = hidden_layer
-            hidden["cache_h"+str(idx)] = cache_hidden_layer
+                h, cache_h = affine_relu_forward(h, weight, bias)
+                hidden["h"+str(idx)], hidden["cache_h"+str(idx)]   = h, cache_h
+                
+                #apply dropout
+                if self.use_dropout:
+                    hdrop, cache_hdrop = dropout_forward(h, self.dropout_param)
+                    hidden['hdrop'+str(idx)], hidden['cache_hdrop'+str(idx)] = hdrop, cache_hdrop
+
+        scores = hidden['h'+str(L)]
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -288,21 +306,27 @@ class FullyConnectedNet(object):
         # automated tests, make sure that your L2 regularization includes a factor #
         # of 0.5 to simplify the expression for the gradient.                      #
         ############################################################################
+        # loss
         data_loss, dscores = softmax_loss(scores, y)
         reg_loss = sum([0.5 * self.reg * np.sum(self.params['W'+str(i)] ** 2) for i in range(1, self.num_layers + 1)])
         loss = data_loss + reg_loss
-        
+
         # backward
         hidden['dh'+str(L)] = dscores
         for i in range(L)[::-1]:
             idx = i + 1
             weight = self.params["W"+str(idx)]
             dh = hidden['dh'+str(idx)]
-            cache_h = hidden['cache_h'+str(idx)] 
+            cache_h = hidden['cache_h'+str(idx)]
             if idx == L:
                 dh, dW, db = affine_backward(dh, cache_h)
                 dW += self.reg * weight
             else:
+                if self.use_dropout:
+                    # First backprop in the dropout layer
+                    cache_hdrop = hidden['cache_hdrop' + str(idx)]
+                    dh = dropout_backward(dh, cache_hdrop)
+                
                 dh, dW, db = affine_relu_backward(dh, cache_h)
                 dW += self.reg * weight
             hidden['dh'+str(idx - 1)] = dh
