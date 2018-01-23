@@ -414,7 +414,7 @@ def dropout_backward(dout, cache):
     return dx
 
 
-def conv_forward_naive(x, w, b, conv_param):
+def conv_forward_naive(x, W, b, conv_param):
     """
     A naive implementation of the forward pass for a convolutional layer.
 
@@ -443,25 +443,23 @@ def conv_forward_naive(x, w, b, conv_param):
     # Hint: you can use the function np.pad for padding.                      #
     ###########################################################################
     stride, pad = conv_param['stride'], conv_param['pad']
-    n_filters, d_filter, h_filter, w_filter = w.shape
-    n_x, d_x, h_x, w_x = x.shape
-    h_out = int((h_x - h_filter + 2 * pad) / stride + 1)
-    w_out = int((w_x - w_filter + 2 * pad) / stride + 1)
-    x = np.pad(x, [(0, 0), (0, 0), (pad, pad), (pad, pad)], mode='constant')
-    out = np.zeros((n_x, n_filters, h_out, w_out))
-    for i in range(n_x):
-        for j in range(n_filters):
-            for height in range(0, h_x, stride):
-                for width in range(0, w_x, stride):
-                    current_weight = w[j]
-                    current_x = x[i, :, height:height + h_filter, width:width + w_filter]
-                    print(np.dot(current_weight, current_x).shape)
-                    element = np.sum(current_weight * current_x) + b[j]
-                    out[i, j, int(height/stride), int(width/stride)] = element
+    F, D, hh, ww = W.shape
+    N, C, h, w = x.shape
+    h_out = int((h - hh + 2 * pad) / stride + 1)
+    w_out = int((w - ww + 2 * pad) / stride + 1)
+    x_pad = np.pad(x, [(0, 0), (0, 0), (pad, pad), (pad, pad)], mode='constant')
+    out = np.zeros((N, F, h_out, w_out))
+    s = stride
+    for i in range(N): # for ith image
+        for j in range(F): # for jth filter
+            for k in range(h_out):
+                for l in range(w_out):
+                    sub_x = x_pad[i,:,k*s:hh+k*s,l*s:l*s+ww]
+                    out[i, j, k, l] = np.sum(W[j] * sub_x) + b[j]
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
-    cache = (x, w, b, conv_param)
+    cache = (x, W, b, conv_param)
     return out, cache
 
 
@@ -478,12 +476,35 @@ def conv_backward_naive(dout, cache):
     - dw: Gradient with respect to w
     - db: Gradient with respect to b
     """
-    #https://medium.com/@2017csm1006/forward-and-backpropagation-in-convolutional-neural-network-4dfa96d7b37e
     dx, dw, db = None, None, None
     ###########################################################################
     # TODO: Implement the convolutional backward pass.                        #
     ###########################################################################
-    pass
+    (x, w, b, conv_param) = cache
+    F, C, FH, FW = w.shape
+    N, C, H, W = x.shape
+    s, pad = conv_param['stride'], conv_param['pad']
+    H_new = int(1 + (H + 2 * pad - FH) / s)
+    W_new = int(1 + (W + 2 * pad - FW) / s)
+    # initialize
+    dw = np.zeros(w.shape)
+    dx = np.zeros(x.shape)
+    db = np.zeros(b.shape)
+    outH = dout.shape[-2]
+    outW = dout.shape[-1]
+    x_pad = np.pad(x, [(0, 0), (0, 0), (pad, pad), (pad, pad)], mode='constant')
+    dx_pad = np.pad(dx, [(0, 0), (0, 0), (pad, pad), (pad, pad)], mode='constant')
+    # reference: https://upload-images.jianshu.io/upload_images/2301760-505eb0fb096d99c3.jpg?imageMogr2/auto-orient/strip%7CimageView2/2/w/700
+    for i in range(N):
+        for f in range(F):
+            for j in range(outH):
+                for k in range(outW):
+                    sub_pad = x_pad[i, :, j*s:FH+j*s, k*s:FW+k*s]
+                    db[f] += dout[i, f, j, k]
+                    dw[f] += sub_pad * dout[i, f, j, k]
+                    dx_pad[i, :, j*s:FH+j*s, k*s:FW+k*s] += w[f] * dout[i, f, j, k]
+    #
+    dx = dx_pad[:, :, pad:pad+H, pad:pad+W]
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
