@@ -37,6 +37,7 @@ class ThreeLayerConvNet(object):
         self.params = {}
         self.reg = reg
         self.dtype = dtype
+        self.reg = reg
         
         ############################################################################
         # TODO: Initialize weights and biases for the three-layer convolutional    #
@@ -66,8 +67,8 @@ class ThreeLayerConvNet(object):
         width_pool = 2
         height_pool = 2
         stride_pool = 2
-        Hp = (Hc - height_pool) / stride_pool + 1
-        Wp = (Wc - width_pool) / stride_pool + 1
+        Hp = int((Hc - height_pool) / stride_pool + 1)
+        Wp = int((Wc - width_pool) / stride_pool + 1)
 
         # Hidden Affine layer
         # input: (N, F * Hp * Wp)
@@ -80,7 +81,7 @@ class ThreeLayerConvNet(object):
         # input: (N, Hh)
         # Output: (N, Nc)
         Nc = num_classes
-        w3 = weight_scale * np.randm.randn(Hh, Nc)
+        w3 = weight_scale * np.random.randn(Hh, Nc)
         b3 = np.zeros(Nc)
         
         self.params = {"W1":w1, "b1":b1, "W2":w2, "b2":b2, "W3":w3, "b3":b3}
@@ -115,12 +116,11 @@ class ThreeLayerConvNet(object):
         # computing the class scores for X and storing them in the scores          #
         # variable.                                                                #
         ############################################################################
-        # Conv 
-        A1, cache_A1 = conv_relu_pool_forward(X, W1, b1, conv_param, pool_param)
+        # Conv
+        A1, conv_cache = conv_relu_pool_forward(X, W1, b1, conv_param, pool_param)
         # Hidden Affine Layer
         N, F, Hp, Wp = A1.shape  # output shape
-        A1 = A1.reshape(N, F * Hp * Wp)
-        A2, cache_A2 = affine_relu_forward(A1, W2, b2)
+        A2, cache_hidden = affine_relu_forward(A1, W2, b2)
         N, Hh = A2.shape
         
         # Output Affine Layer
@@ -140,7 +140,28 @@ class ThreeLayerConvNet(object):
         # for self.params[k]. Don't forget to add L2 regularization!               #
         ############################################################################
         data_loss, dscores = softmax_loss(scores, y)
+        fn = lambda x: np.sum(x**2)
+        square_weight = list(map(fn, [W1, W2, W3])) 
+        # because in python3 map function will return map object instead of a list
+        reg_loss = 0.5 * self.reg * np.sum(square_weight)
+        loss = data_loss + reg_loss
         
+        # backpropagation
+        # conv - relu - 2x2 max pool - affine - relu - affine - softmax
+        # Output affine layer
+        da2, dW3, db3 = affine_backward(dscores, cache_scores)
+        dW3 += self.reg * W3
+        
+        # Hidden affine Layer
+        da1, dW2, db2 = affine_relu_backward(da2, cache_hidden)
+        dW2 += self.reg * W2
+        
+        # Conv
+        dx, dW1, db1 = conv_relu_pool_backward(da1, conv_cache)
+        dW1 += self.reg * W1
+        
+        grads = {'W1': dW1, 'b1': db1, 'W2': dW2, 'b2': db2, 'W3': dW3, 'b3': db3}
+        #
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
