@@ -335,7 +335,6 @@ def lstm_step_backward(dnext_h, dnext_c, cache):
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
-    print(dx.shape)
     return dx, dprev_h, dprev_c, dWx, dWh, db
 
 
@@ -372,17 +371,18 @@ def lstm_forward(x, h0, Wx, Wh, b):
     prev_c = np.zeros(shape=prev_h.shape)
     h = np.zeros(shape=(N, T, H))
     cache = []
-    
+    x = x.transpose(1, 0, 2)
+    h = h.transpose(1, 0, 2)
     for t in range(T):
-        next_h, next_c, current_cache = lstm_step_forward(x[:,t,], prev_h, prev_c, Wx, Wh, b)
-        h[:,t,] = next_h
+        next_h, next_c, current_cache = lstm_step_forward(x[t], prev_h, prev_c, Wx, Wh, b)
+        h[t] = next_h
         prev_h = next_h
         prev_c = next_c
         cache.append(current_cache)
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
-    
+    h = h.transpose(1, 0, 2)
     return h, cache
 
 
@@ -407,29 +407,30 @@ def lstm_backward(dh, cache):
     # You should use the lstm_step_backward function that you just defined.     #
     #############################################################################
     (N, T, H) = dh.shape
-    D = cache[0][-1].shape[1]
+    D = cache[0][2].shape[1]
     dx = np.zeros((N, T, D))
     dh0 = np.zeros((N, H))
     dWx = np.zeros((D, 4*H))
     dWh = np.zeros((H, 4*H))
     db = np.zeros((4*H,))
-    print(dx.shape)
+    
+    dx = dx.transpose(1, 0, 2)
+    dh = dh.transpose(1, 0, 2)
     for t in range(T - 1, -1, -1):
         if t == T - 1:
-            dprev_h = np.zeros(shape=dh[:,t,].shape)
-            dprev_c = np.zeros(shape=dh[:,t,].shape)
-        print(dprev_h.shape)
-        print(dh[:,t,].shape)
-        dx[:,t,], dprev_h, dprev_c, _dWx, _dWh, _db = lstm_step_backward(dh[:,t,] + dprev_h, dprev_c, cache[t])
+            dprev_h = np.zeros(shape=dh[t].shape)
+            dprev_c = np.zeros(shape=dh[t].shape)
+        _dx, dprev_h, dprev_c, _dWx, _dWh, _db = lstm_step_backward(dh[t] + dprev_h, dprev_c, cache[t])
         if t == 0:
-            dh0 = dprev
+            dh0 = dprev_h
         dWx += _dWx
         dWh += _dWh
         db += _db
+        dx[t] = _dx
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
-
+    dx = dx.transpose(1, 0, 2)
     return dx, dh0, dWx, dWh, db
 
 

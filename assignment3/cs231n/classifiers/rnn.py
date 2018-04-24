@@ -147,7 +147,7 @@ class CaptioningRNN(object):
         if self.cell_type == 'rnn':
             h, rnn_cache = rnn_forward(captions_in_emb, h0, Wx, Wh, b) # (N, T, H)
         else:
-            pass
+            h, lstm_cache = lstm_forward(captions_in_emb, h0, Wx, Wh, b)
         # step (4) hidden state to word
         temp_score, temp_cache = temporal_affine_forward(h, W_vocab, b_vocab) # (N, T, V)
         
@@ -158,10 +158,10 @@ class CaptioningRNN(object):
         
         dtemp_score, grads['W_vocab'], grads['b_vocab'] = temporal_affine_backward(dout, temp_cache)
         if self.cell_type == 'rnn':
-            drnn, dh0, grads['Wx'], grads['Wh'], grads['b'] = rnn_backward(dtemp_score, rnn_cache) # (N, T, H)
+            dx, dh0, grads['Wx'], grads['Wh'], grads['b'] = rnn_backward(dtemp_score, rnn_cache) # (N, T, H)
         else:
-            pass
-        grads['W_embed'] = word_embedding_backward(drnn, emb_in_cache)
+            dx, dh0, grads['Wx'], grads['Wh'], grads['b'] = lstm_backward(dtemp_score, lstm_cache)
+        grads['W_embed'] = word_embedding_backward(dx, emb_in_cache)
         dfeature, grads['W_proj'], grads['b_proj'] = affine_backward(dh0, feature_cache)
         ############################################################################
         #                             END OF YOUR CODE                             #
@@ -226,15 +226,17 @@ class CaptioningRNN(object):
         ###########################################################################
         # step 1 
         h0, feature_cache = affine_forward(features, W_proj, b_proj)
+        cur_h = h0
+        cur_c = np.zeros_like(cur_h)
         x = np.full( N, self._start)
         captions[:,0] = self._start
         for i in range(1, max_length):
             emb_cap, _ = word_embedding_forward(x, W_embed)
             if self.cell_type == "rnn":
-                next_h, _ = rnn_step_forward(emb_cap, h0, Wx, Wh, b)
+                cur_h, _ = rnn_step_forward(emb_cap, cur_h, Wx, Wh, b)
             else:
-                pass
-            voc, _ = affine_forward(next_h, W_vocab, b_vocab)
+                cur_h, cur_c, _ = lstm_step_forward(emb_cap, cur_h, cur_c, Wx, Wh, b)
+            voc, _ = affine_forward(cur_h, W_vocab, b_vocab)
             x = voc.argmax(axis=1)
             captions[:, i] = x
         ############################################################################
